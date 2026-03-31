@@ -16,7 +16,7 @@ interface LoginRequestBody{
 export const registerUser = async (req: Request<{},{},RegisterRequestBody>, res: Response, next: NextFunction) => {
 const {username, email, password } = req.body;
 try {
-    if(!username || !email || !password) {
+    if(!username.trim() || !email.trim() || !password.trim()) {
         return res.status(400).json({
             success : false,
             message : "All fields are required"
@@ -36,7 +36,8 @@ try {
     const saltRounds : number = process.env.SALT_ROUNDS ?parseInt(process.env.SALT_ROUNDS as string) : 10;
     const hashPassword : string = await bcrypt.hash(password, saltRounds);
     const newUser = await User.create({username,email, password : hashPassword});
-    res.status(201).json({
+    const token : string = jwt.sign({ userId : newUser._id }, process.env.JWT_SECRET as string, {expiresIn : "1D"})
+    res.cookie("token", token).status(201).json({
         success : true,
         message : "User registered successfully",
         user_id : newUser._id
@@ -50,7 +51,7 @@ try {
 export const loginUser = async (req:Request<{}, {}, LoginRequestBody>, res: Response, next : NextFunction) => {
     const {email, password } = req.body;
     try {
-        if(!email || !password) {
+        if(!email.trim() || !password.trim()) {
             return res.status(400).json({
                 success : false,
                 message : "All fields are required"
@@ -71,10 +72,14 @@ export const loginUser = async (req:Request<{}, {}, LoginRequestBody>, res: Resp
             return next(err)
         }
         const token : string = jwt.sign({ userId : user._id }, process.env.JWT_SECRET as string, {expiresIn : "1D"})
-        res.status(200).json({
+        res.cookie("token", token, {
+            httpOnly: false,
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 24 * 60 * 60 * 1000 
+        }).status(200).json({
             success : true,
             message : "Login Successfully",
-            token
+            user_id : user._id
             
         })
     } catch (error : Error | any) {
@@ -83,4 +88,40 @@ export const loginUser = async (req:Request<{}, {}, LoginRequestBody>, res: Resp
         
     }
 
+
+}
+
+export const logoutUser = (req: Request , res: Response) => {
+    res.clearCookie("token").status(200).json({
+        success: true,
+        message : "Logout successfully"
+    })
+}
+
+export const getMyProfile = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const token = req.cookies.token;
+        if(!token){
+            const error : any = new Error("Unauthorized");
+            error.statusCode = 401;
+            return next(error);
+        }
+        const decoded : any = jwt.verify(token, process.env.JWT_SECRET as string);
+        const user = await User.findById(decoded.userId).select("-password").select("-__v");
+        if(!user){
+            const error : any = new Error("User not found");
+            error.statusCode = 404;
+            return next(error);
+        }
+        res.status(200).json({
+            success: true,
+            message : "User profile fetched successfully",
+            user
+        });
+
+    } catch (error) {
+        const err : any = new Error("Internal Server Error");
+        err.statusCode = 500;
+        return next(err);
+    }
 }

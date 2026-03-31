@@ -1,7 +1,12 @@
 import mongoose from "mongoose";
 const { Schema} = mongoose;
-
-const userSchema = new Schema({
+interface IUser {
+    username : string;
+    email : string;
+    password : string;
+    role : "buyer" | "seller";
+}
+const userSchema = new Schema <IUser>({
     username : {
         type : String,
         required : true,
@@ -15,10 +20,11 @@ const userSchema = new Schema({
     password : {
         type : String,
         required : true,
-        length : 8
+        minlength : 8
     },
     role : {
         type : String,
+        enum : ["buyer", "seller"],
         default : "buyer",
     }
 })
